@@ -29,8 +29,15 @@ A simple Django application for Optical Character Recognition (OCR) using Paddle
 
 ### API Endpoints
 
-- OCR Processing: `POST /ocr/api/process-image/`
-  - Upload an image file to extract text
+- OCR Processing (Single Image): `POST /ocr/api/process-image/`
+  - Upload a single image file to extract text
+  - Request: Form data with key `image`
+  - Response: JSON with extracted text
+
+- OCR Processing (Multiple Images): `POST /ocr/api/process-multiple-images/`
+  - Upload multiple image files to extract text from each
+  - Request: Form data with key `images[]`
+  - Response: JSON array with extracted text for each image
 
 ### API Documentation
 

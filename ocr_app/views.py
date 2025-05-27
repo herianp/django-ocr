@@ -200,3 +200,186 @@ class OCRImageAPIView(APIView):
                 {'error': f'An error occurred: {str(e)}'}, 
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+
+class OCRMultipleImagesAPIView(APIView):
+    """
+    API endpoint for OCR processing of multiple uploaded images.
+    """
+    parser_classes = (MultiPartParser, FormParser)
+
+    @extend_schema(
+        description="Process multiple images with OCR to extract text",
+        request={
+            'multipart/form-data': {
+                'type': 'object',
+                'properties': {
+                    'images': {
+                        'type': 'array',
+                        'items': {
+                            'type': 'string',
+                            'format': 'binary'
+                        }
+                    }
+                },
+                'required': ['images']
+            }
+        },
+        responses={
+            200: {
+                'description': 'OCR processing successful',
+                'type': 'object',
+                'properties': {
+                    'results': {
+                        'type': 'array',
+                        'items': {
+                            'type': 'object',
+                            'properties': {
+                                'message': {'type': 'string'},
+                                'filename': {'type': 'string'},
+                                'rec_texts': {
+                                    'type': 'array',
+                                    'items': {
+                                        'type': 'string'
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            400: {
+                'description': 'Bad request',
+                'type': 'object',
+                'properties': {
+                    'error': {'type': 'string'}
+                }
+            },
+            405: {
+                'description': 'Method not allowed',
+                'type': 'object',
+                'properties': {
+                    'error': {'type': 'string'}
+                }
+            },
+            500: {
+                'description': 'Server error',
+                'type': 'object',
+                'properties': {
+                    'error': {'type': 'string'}
+                }
+            },
+            503: {
+                'description': 'OCR engine not initialized',
+                'type': 'object',
+                'properties': {
+                    'error': {'type': 'string'}
+                }
+            }
+        }
+    )
+    def post(self, request, *args, **kwargs):
+        """
+        Process multiple uploaded images with OCR and return the extracted text for each image.
+        """
+        if OCR_ENGINE_INSTANCE is None:
+            return Response(
+                {'error': 'OCR engine is not initialized. Check server logs.'}, 
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+
+        print(f"request.FILES: {request.FILES}")
+        if not request.FILES:
+            return Response(
+                {'error': 'No image files found. Ensure keys are "images[]".'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Get all uploaded files
+        uploaded_files = request.FILES.getlist('images')
+        if not uploaded_files:
+            # Try alternative key format
+            uploaded_files = []
+            for key in request.FILES:
+                if key.startswith('images['):
+                    uploaded_files.append(request.FILES[key])
+
+            if not uploaded_files:
+                return Response(
+                    {'error': 'No image files found with key "images". Please check your request format.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+        allowed_extensions = ['.png', '.jpg', '.jpeg', '.bmp', '.tiff']
+        results = []
+
+        for uploaded_file in uploaded_files:
+            # Basic file type validation
+            _filename, ext = os.path.splitext(uploaded_file.name)
+            if ext.lower() not in allowed_extensions:
+                results.append({
+                    'message': 'OCR failed',
+                    'filename': uploaded_file.name,
+                    'error': f'Invalid file type: {ext}. Allowed: {", ".join(allowed_extensions)}'
+                })
+                continue
+
+            try:
+                image_data = uploaded_file.read()
+                nparr = np.frombuffer(image_data, np.uint8)
+                img_cv = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+
+                if img_cv is None:
+                    results.append({
+                        'message': 'OCR failed',
+                        'filename': uploaded_file.name,
+                        'error': 'Could not decode image data.'
+                    })
+                    continue
+
+                ocr_start_time = time.time()
+                recognized_data = process_single_image_with_ocr(img_cv, OCR_ENGINE_INSTANCE)
+                ocr_end_time = time.time()
+
+                print(f"OCR processing for {uploaded_file.name} took: {ocr_end_time - ocr_start_time:.2f} seconds")
+
+                # Extract rec_texts from recognized_data
+                rec_texts = []
+                try:
+                    if recognized_data and isinstance(recognized_data, list) and len(recognized_data) > 0:
+                        if isinstance(recognized_data[0], dict):
+                            if 'rec_texts' in recognized_data[0]:
+                                rec_texts = recognized_data[0]['rec_texts']
+                            else:
+                                for key, value in recognized_data[0].items():
+                                    if key == 'rec_texts':
+                                        rec_texts = value
+                                        break
+                                    elif isinstance(value, dict) and 'rec_texts' in value:
+                                        rec_texts = value['rec_texts']
+                                        break
+                except Exception as e:
+                    print(f"Error extracting rec_texts for {uploaded_file.name}: {e}")
+                    results.append({
+                        'message': 'OCR successful but could not extract rec_texts',
+                        'filename': uploaded_file.name,
+                        'error': str(e)
+                    })
+                    continue
+
+                results.append({
+                    'message': 'OCR successful',
+                    'filename': uploaded_file.name,
+                    'rec_texts': rec_texts
+                })
+
+            except Exception as e:
+                import traceback
+                print(f"Error during OCR processing for {uploaded_file.name}: {e}\n{traceback.format_exc()}")
+                results.append({
+                    'message': 'OCR failed',
+                    'filename': uploaded_file.name,
+                    'error': str(e)
+                })
+
+        return Response({'results': results}, status=status.HTTP_200_OK)
