@@ -19,13 +19,13 @@ try:
     print("Initializing PaddleOCR (Django App)...")
     # Using 'en' for English as a default, adjust if your script's 'cs' (Czech) is always needed
     # If your script used 'cs', change lang='cs' here.
-    OCR_ENGINE_INSTANCE = PaddleOCR(use_angle_cls=True, lang='en', use_gpu=False, show_log=False)
+    OCR_ENGINE_INSTANCE = PaddleOCR(use_textline_orientation=True, lang='cs', use_gpu=False, show_log=False)
     print("PaddleOCR initialized successfully.")
 except ValueError as e_init:
     if 'use_gpu' in str(e_init).lower() or 'show_log' in str(e_init).lower():
         print(f"PaddleOCR init failed due to unsupported params ({e_init}), trying fallback...")
         try:
-            OCR_ENGINE_INSTANCE = PaddleOCR(use_angle_cls=True, lang='en')  # Fallback
+            OCR_ENGINE_INSTANCE = PaddleOCR(use_textline_orientation=True, lang='cs')  # Fallback
             print("PaddleOCR initialized successfully (fallback).")
         except Exception as e_fallback:
             print(f"CRITICAL: PaddleOCR fallback initialization failed: {e_fallback}")
@@ -54,27 +54,9 @@ def process_single_image_with_ocr(image_cv_array, ocr_engine):
     # PaddleOCR's ocr method returns a list like:
     # [[[points, (text, confidence)], [points, (text, confidence)], ...]]
     # For a single image, the outer list has one element.
-    ocr_raw_result = ocr_engine.ocr(image_cv_array)  # Pass the numpy array
+    ocr_raw_result = ocr_engine.predict(image_cv_array)  # Pass the numpy array
 
-    processed_results = []
-    if ocr_raw_result and ocr_raw_result[0]:  # Check results for the first (and only) image
-        lines = ocr_raw_result[0]
-        if lines:
-            for line_info in lines:
-                # line_info is [bounding_box, (text, confidence_score)]
-                text_content = line_info[1][0]
-                confidence = line_info[1][1]
-                bounding_box = line_info[0]  # list of 4 points [[x1,y1], [x2,y2], [x3,y3], [x4,y4]]
-
-                processed_results.append({
-                    'text': text_content,
-                    'confidence': float(confidence),
-                    'bounding_box': bounding_box
-                })
-    else:
-        print('No text detected in the image by process_single_image_with_ocr.')
-
-    return processed_results
+    return ocr_raw_result
 
 
 class OCRImageAPIView(APIView):
@@ -167,6 +149,7 @@ class OCRImageAPIView(APIView):
             ocr_end_time = time.time()
 
             print(f"OCR processing for uploaded image took: {ocr_end_time - ocr_start_time:.2f} seconds")
+            print(f"recognized_data: {recognized_data}")
 
             # Optional: Save the uploaded image if needed for debugging or records
             # This part is from your script's concept of frames_dir
