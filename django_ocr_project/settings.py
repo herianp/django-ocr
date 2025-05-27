@@ -55,7 +55,7 @@ SPECTACULAR_SETTINGS = {
     'TITLE': 'OCR API',
     'DESCRIPTION': 'API for OCR processing of images',
     'VERSION': '1.0.0',
-    'SERVE_INCLUDE_SCHEMA': False,
+    'SERVE_INCLUDE_SCHEMA': True,
 }
 
 MIDDLEWARE = [

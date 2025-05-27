@@ -86,23 +86,42 @@ class OCRImageAPIView(APIView):
                 'properties': {
                     'message': {'type': 'string'},
                     'filename': {'type': 'string'},
-                    'ocr_data': {
+                    'rec_texts': {
                         'type': 'array',
                         'items': {
-                            'type': 'object',
-                            'properties': {
-                                'text': {'type': 'string'},
-                                'confidence': {'type': 'number'},
-                                'bounding_box': {'type': 'array'}
-                            }
+                            'type': 'string'
                         }
                     }
                 }
             },
-            400: {'description': 'Bad request'},
-            405: {'description': 'Method not allowed'},
-            500: {'description': 'Server error'},
-            503: {'description': 'OCR engine not initialized'}
+            400: {
+                'description': 'Bad request',
+                'type': 'object',
+                'properties': {
+                    'error': {'type': 'string'}
+                }
+            },
+            405: {
+                'description': 'Method not allowed',
+                'type': 'object',
+                'properties': {
+                    'error': {'type': 'string'}
+                }
+            },
+            500: {
+                'description': 'Server error',
+                'type': 'object',
+                'properties': {
+                    'error': {'type': 'string'}
+                }
+            },
+            503: {
+                'description': 'OCR engine not initialized',
+                'type': 'object',
+                'properties': {
+                    'error': {'type': 'string'}
+                }
+            }
         }
     )
     def post(self, request, *args, **kwargs):
@@ -164,10 +183,42 @@ class OCRImageAPIView(APIView):
             #     f_out.write(image_data)
             # print(f"Uploaded image temporarily saved to: {temp_file_path}")
 
+            # Extract rec_texts from recognized_data based on the structure in the issue description
+            rec_texts = []
+            try:
+                # Print the structure of recognized_data for debugging
+                print(f"Type of recognized_data: {type(recognized_data)}")
+
+                if recognized_data and isinstance(recognized_data, list) and len(recognized_data) > 0:
+                    # Based on the issue description, rec_texts is a direct field in the object
+                    if isinstance(recognized_data[0], dict):
+                        if 'rec_texts' in recognized_data[0]:
+                            rec_texts = recognized_data[0]['rec_texts']
+                        else:
+                            # Try to find rec_texts in the nested structure
+                            print("Searching for rec_texts in nested structure...")
+                            for key, value in recognized_data[0].items():
+                                print(f"Checking key: {key}")
+                                if key == 'rec_texts':
+                                    rec_texts = value
+                                    break
+                                elif isinstance(value, dict) and 'rec_texts' in value:
+                                    rec_texts = value['rec_texts']
+                                    break
+            except Exception as e:
+                print(f"Error extracting rec_texts: {e}")
+                # If we can't extract rec_texts, return the entire recognized_data for debugging
+                return Response({
+                    'message': 'OCR successful but could not extract rec_texts',
+                    'filename': uploaded_file.name,
+                    'error': str(e),
+                    'recognized_data': str(recognized_data)[:1000]  # Limit the size for readability
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
             return Response({
                 'message': 'OCR successful',
                 'filename': uploaded_file.name,
-                'ocr_data': recognized_data  # This now contains text, confidence, bbox
+                'rec_texts': rec_texts  # Only return the extracted text
             }, status=status.HTTP_200_OK)
 
         except Exception as e:

@@ -9,9 +9,9 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('ocr/', include('ocr_app.urls')), # Include your app's URLs under the 'ocr/' prefix
 
-    # DRF Spectacular URLs
+    # DRF Spectacular URLs - Schema and UI enabled
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
-    # Optional UI:
+    # Swagger UI and ReDoc are enabled
     path('api/schema/swagger-ui/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
     path('api/schema/redoc/', SpectacularRedocView.as_view(url_name='schema'), name='redoc'),
 ]
