@@ -1,5 +1,3 @@
-from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
 from django.conf import settings  # For MEDIA_ROOT
 import os
 import cv2
@@ -7,6 +5,13 @@ import numpy as np
 from paddleocr import PaddleOCR  # Keep PaddleOCR from paddleocr library
 import time
 import json  # For potential output formatting if needed, though JsonResponse handles it
+
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from rest_framework.parsers import MultiPartParser, FormParser
+from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiExample
+from drf_spectacular.types import OpenApiTypes
 
 # --- PaddleOCR Instance Initialization (from previous Django example) ---
 OCR_ENGINE_INSTANCE = None
@@ -72,15 +77,68 @@ def process_single_image_with_ocr(image_cv_array, ocr_engine):
     return processed_results
 
 
-@csrf_exempt
-def ocr_image_endpoint(request):
-    if OCR_ENGINE_INSTANCE is None:
-        return JsonResponse({'error': 'OCR engine is not initialized. Check server logs.'}, status=503)
+class OCRImageAPIView(APIView):
+    """
+    API endpoint for OCR processing of uploaded images.
+    """
+    parser_classes = (MultiPartParser, FormParser)
 
-    if request.method == 'POST':
+    @extend_schema(
+        description="Process an image with OCR to extract text",
+        request={
+            'multipart/form-data': {
+                'type': 'object',
+                'properties': {
+                    'image': {
+                        'type': 'string',
+                        'format': 'binary'
+                    }
+                },
+                'required': ['image']
+            }
+        },
+        responses={
+            200: {
+                'description': 'OCR processing successful',
+                'type': 'object',
+                'properties': {
+                    'message': {'type': 'string'},
+                    'filename': {'type': 'string'},
+                    'ocr_data': {
+                        'type': 'array',
+                        'items': {
+                            'type': 'object',
+                            'properties': {
+                                'text': {'type': 'string'},
+                                'confidence': {'type': 'number'},
+                                'bounding_box': {'type': 'array'}
+                            }
+                        }
+                    }
+                }
+            },
+            400: {'description': 'Bad request'},
+            405: {'description': 'Method not allowed'},
+            500: {'description': 'Server error'},
+            503: {'description': 'OCR engine not initialized'}
+        }
+    )
+    def post(self, request, *args, **kwargs):
+        """
+        Process an uploaded image with OCR and return the extracted text.
+        """
+        if OCR_ENGINE_INSTANCE is None:
+            return Response(
+                {'error': 'OCR engine is not initialized. Check server logs.'}, 
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+
         print(request.FILES)
         if 'image' not in request.FILES:
-            return JsonResponse({'error': 'No image file found. Ensure key is "image".'}, status=400)
+            return Response(
+                {'error': 'No image file found. Ensure key is "image".'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
         uploaded_file = request.FILES['image']
 
@@ -88,8 +146,10 @@ def ocr_image_endpoint(request):
         allowed_extensions = ['.png', '.jpg', '.jpeg', '.bmp', '.tiff']
         _filename, ext = os.path.splitext(uploaded_file.name)  # Use _filename to avoid clash
         if ext.lower() not in allowed_extensions:
-            return JsonResponse({'error': f'Invalid file type: {ext}. Allowed: {", ".join(allowed_extensions)}'},
-                                status=400)
+            return Response(
+                {'error': f'Invalid file type: {ext}. Allowed: {", ".join(allowed_extensions)}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
         try:
             image_data = uploaded_file.read()
@@ -97,7 +157,10 @@ def ocr_image_endpoint(request):
             img_cv = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
             if img_cv is None:
-                return JsonResponse({'error': 'Could not decode image data.'}, status=400)
+                return Response(
+                    {'error': 'Could not decode image data.'}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
 
             ocr_start_time = time.time()
             recognized_data = process_single_image_with_ocr(img_cv, OCR_ENGINE_INSTANCE)
@@ -118,20 +181,16 @@ def ocr_image_endpoint(request):
             #     f_out.write(image_data)
             # print(f"Uploaded image temporarily saved to: {temp_file_path}")
 
-            # The structure of your 'create_frame_result' can be adapted here
-            # Since it's a single image, 'frame_num', 'startTime', 'endTime'
-            # might not be relevant unless passed as extra data.
-            # We'll directly return the list of recognized texts and their details.
-
-            return JsonResponse({
+            return Response({
                 'message': 'OCR successful',
                 'filename': uploaded_file.name,
                 'ocr_data': recognized_data  # This now contains text, confidence, bbox
-            }, status=200)
+            }, status=status.HTTP_200_OK)
 
         except Exception as e:
             import traceback
             print(f"Error during OCR processing: {e}\n{traceback.format_exc()}")
-            return JsonResponse({'error': f'An error occurred: {str(e)}'}, status=500)
-    else:
-        return JsonResponse({'error': 'Only POST method allowed.'}, status=405)
+            return Response(
+                {'error': f'An error occurred: {str(e)}'}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
