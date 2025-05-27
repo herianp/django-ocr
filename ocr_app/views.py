@@ -4,7 +4,6 @@ import cv2
 import numpy as np
 from paddleocr import PaddleOCR  # Keep PaddleOCR from paddleocr library
 import time
-import json  # For potential output formatting if needed, though JsonResponse handles it
 
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -15,10 +14,9 @@ from drf_spectacular.types import OpenApiTypes
 
 # --- PaddleOCR Instance Initialization (from previous Django example) ---
 OCR_ENGINE_INSTANCE = None
+
 try:
     print("Initializing PaddleOCR (Django App)...")
-    # Using 'en' for English as a default, adjust if your script's 'cs' (Czech) is always needed
-    # If your script used 'cs', change lang='cs' here.
     OCR_ENGINE_INSTANCE = PaddleOCR(use_textline_orientation=True, lang='cs', use_gpu=False, show_log=False)
     print("PaddleOCR initialized successfully.")
 except ValueError as e_init:
@@ -35,10 +33,6 @@ except Exception as e_general:
     print(f"CRITICAL: General PaddleOCR initialization error: {e_general}")
 
 
-# --- Functions adapted from your script ---
-# (seconds_to_time_format and extract_frame_info are less relevant for single image upload
-# unless you pass that timing info separately)
-
 def process_single_image_with_ocr(image_cv_array, ocr_engine):
     """
     Processes a single image (as a NumPy array) with the given OCR engine.
@@ -47,15 +41,12 @@ def process_single_image_with_ocr(image_cv_array, ocr_engine):
     if image_cv_array is None:
         print("Error: Input image array is None.")
         return None
+
     if ocr_engine is None:
         print("Error: OCR Engine not initialized.")
         return None
 
-    # PaddleOCR's ocr method returns a list like:
-    # [[[points, (text, confidence)], [points, (text, confidence)], ...]]
-    # For a single image, the outer list has one element.
-    ocr_raw_result = ocr_engine.predict(image_cv_array)  # Pass the numpy array
-
+    ocr_raw_result = ocr_engine.predict(image_cv_array)
     return ocr_raw_result
 
 
@@ -170,35 +161,16 @@ class OCRImageAPIView(APIView):
             print(f"OCR processing for uploaded image took: {ocr_end_time - ocr_start_time:.2f} seconds")
             print(f"recognized_data: {recognized_data}")
 
-            # Optional: Save the uploaded image if needed for debugging or records
-            # This part is from your script's concept of frames_dir
-            # For a Django app, you'd typically use Django's file storage system
-            # or a dedicated media handling strategy.
-            # Example: save to MEDIA_ROOT/temp_uploads/
-            # temp_save_dir = os.path.join(settings.MEDIA_ROOT, 'temp_uploads')
-            # os.makedirs(temp_save_dir, exist_ok=True)
-            # unique_filename = f"{int(time.time())}_{uploaded_file.name}"
-            # temp_file_path = os.path.join(temp_save_dir, unique_filename)
-            # with open(temp_file_path, 'wb') as f_out:
-            #     f_out.write(image_data)
-            # print(f"Uploaded image temporarily saved to: {temp_file_path}")
-
             # Extract rec_texts from recognized_data based on the structure in the issue description
             rec_texts = []
             try:
-                # Print the structure of recognized_data for debugging
-                print(f"Type of recognized_data: {type(recognized_data)}")
-
                 if recognized_data and isinstance(recognized_data, list) and len(recognized_data) > 0:
                     # Based on the issue description, rec_texts is a direct field in the object
                     if isinstance(recognized_data[0], dict):
                         if 'rec_texts' in recognized_data[0]:
                             rec_texts = recognized_data[0]['rec_texts']
                         else:
-                            # Try to find rec_texts in the nested structure
-                            print("Searching for rec_texts in nested structure...")
                             for key, value in recognized_data[0].items():
-                                print(f"Checking key: {key}")
                                 if key == 'rec_texts':
                                     rec_texts = value
                                     break
