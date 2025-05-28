@@ -10,8 +10,8 @@ ffmpeg-python==0.2.0
 opencv-python==4.6.0.66
 
 # OCR
-paddleocr==2.7.0.3
-paddlepaddle==2.5.1
+paddleocr==2.8.0
+paddlepaddle==2.6.0
 
 # Utilities
 requests==2.31.0

@@ -16,7 +16,7 @@ A simple Django application for Optical Character Recognition (OCR) using Paddle
 1. Clone the repository
 2. Install dependencies:
    ```
-   pip install djangorestframework drf-spectacular paddleocr opencv-python requests
+   pip install djangorestframework drf-spectacular paddleocr==2.8.0 paddlepaddle==2.6.0 opencv-python requests
    ```
 3. Install ffmpeg (required for video processing):
    - Windows: Download from [ffmpeg.org](https://ffmpeg.org/download.html) and add to PATH
@@ -66,3 +66,28 @@ A simple Django application for Optical Character Recognition (OCR) using Paddle
 - API Schema: `/api/schema/`
 - Swagger UI: `/api/schema/swagger-ui/`
 - ReDoc: `/api/schema/redoc/`
+
+## Updates
+
+### PaddleOCR and PaddlePaddle Update
+
+The application has been updated to use newer versions of PaddleOCR and PaddlePaddle:
+- paddleocr: 2.7.0.3 -> 2.8.0
+- paddlepaddle: 2.5.1 -> 2.6.0
+
+These updates may improve Czech language support and diacritics handling. To update your existing installation:
+
+1. Update the packages:
+   ```
+   pip install --upgrade paddleocr==2.8.0 paddlepaddle==2.6.0
+   ```
+
+2. Restart the application:
+   ```
+   python manage.py runserver
+   ```
+
+If you encounter any issues after updating, you can revert to the previous versions:
+   ```
+   pip install paddleocr==2.7.0.3 paddlepaddle==2.5.1
+   ```
