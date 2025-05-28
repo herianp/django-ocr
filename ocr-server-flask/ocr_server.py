@@ -58,10 +58,10 @@ def get_ocr_engine(lang: str) -> PaddleOCR:
     if lang not in ocr_engines:
         try:
             if lang == 'cs+en':
-                ocr_engines[lang] = PaddleOCR(use_angle_cls=True, lang='en', use_gpu=False)
+                ocr_engines[lang] = PaddleOCR(use_angle_cls=True, lang='cs', use_gpu=False)
             elif lang == 'cs':
-                ocr_engines[lang] = PaddleOCR(use_angle_cls=True, lang='en',
-                                              use_gpu=False)  # PaddleOCR nemá přímo češtinu
+                ocr_engines[lang] = PaddleOCR(use_angle_cls=True, lang='cs',
+                                              use_gpu=False)  # PaddleOCR podporuje češtinu
             else:
                 ocr_engines[lang] = PaddleOCR(use_angle_cls=True, lang='en', use_gpu=False)
             logger.info(f"Inicializován OCR engine pro jazyk: {lang}")
@@ -150,11 +150,24 @@ def analyze_frame_ocr(frame_path: str, ocr_engine: PaddleOCR) -> Dict[str, Any]:
         texts = []
         confidences = []
 
+        # Debug výpis pro kontrolu struktury výsledků
+        logger.debug(f"OCR result structure: {type(result)}")
+        if result:
+            logger.debug(f"First result item: {type(result[0]) if result else 'None'}")
+
         if result and result[0]:
             for line in result[0]:
                 if len(line) >= 2:
-                    text = line[1][0] if isinstance(line[1], (list, tuple)) else str(line[1])
-                    confidence = line[1][1] if isinstance(line[1], (list, tuple)) and len(line[1]) > 1 else 0.0
+                    # Zajištění správného zpracování textu s diakritikou
+                    if isinstance(line[1], (list, tuple)):
+                        text = line[1][0]  # Zachování původního formátu textu
+                        confidence = line[1][1] if len(line[1]) > 1 else 0.0
+                    else:
+                        text = str(line[1])  # Explicitní konverze na string
+                        confidence = 0.0
+
+                    # Debug výpis pro kontrolu textu
+                    logger.debug(f"Detected text: {text}")
 
                     texts.append(text)
                     confidences.append(confidence)
@@ -162,10 +175,14 @@ def analyze_frame_ocr(frame_path: str, ocr_engine: PaddleOCR) -> Dict[str, Any]:
         combined_text = '\n'.join(texts) if texts else ''
         avg_confidence = sum(confidences) / len(confidences) if confidences else 0.0
 
+        # Debug výpis pro kontrolu výsledného textu
+        logger.debug(f"Combined text: {combined_text}")
+
         return {
             'text': combined_text,
             'confidence': avg_confidence,
-            'word_count': len(texts)
+            'word_count': len(texts),
+            'raw_texts': texts  # Přidání seznamu všech rozpoznaných textů
         }
 
     except Exception as e:
@@ -245,7 +262,8 @@ def process_video_job(job_id: str, video_url: str, settings: Dict[str, Any]):
                 'time_formatted': frame_time_formatted,
                 'text': ocr_result['text'],
                 'confidence': ocr_result['confidence'],
-                'word_count': ocr_result['word_count']
+                'word_count': ocr_result['word_count'],
+                'raw_texts': ocr_result.get('raw_texts', [])  # Přidání seznamu všech rozpoznaných textů
             })
 
             # Aktualizace pokroku
@@ -258,6 +276,13 @@ def process_video_job(job_id: str, video_url: str, settings: Dict[str, Any]):
             f"[{result['time_formatted']}] {result['text']}"
             for result in frame_results
             if result['text'].strip()
+        ])
+
+        # Vytvoření alternativního textu s použitím raw_texts pro lepší zachování diakritiky
+        all_raw_text = '\n\n'.join([
+            f"[{result['time_formatted']}] {' | '.join(result.get('raw_texts', []))}"
+            for result in frame_results
+            if result.get('raw_texts')
         ])
 
         frames_with_text = sum(1 for r in frame_results if r['text'].strip())
@@ -273,7 +298,8 @@ def process_video_job(job_id: str, video_url: str, settings: Dict[str, Any]):
                     'frames_with_text': frames_with_text,
                     'success_rate': frames_with_text / len(frame_results) if frame_results else 0,
                     'average_confidence': avg_confidence,
-                    'all_text': all_text
+                    'all_text': all_text,
+                    'all_raw_text': all_raw_text  # Přidání alternativního textu s lepší diakritikou
                 }
             },
             'completed_at': datetime.now().isoformat()
